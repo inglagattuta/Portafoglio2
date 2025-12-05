@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Portafoglio Investimenti</title>
+
+  <!-- CSS (cache-busting) -->
+  <link rel="stylesheet" href="style.css?v=10">
+<link rel="stylesheet" href="app-theme.css?v1">
+  
+  <!-- Carica Firebase config come module (defer-like, ma keep as module) -->
+ 
+  <!-- XLSX (non-module) -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <!-- main.js come module, con defer implicito per type=module -->
+  <script type="module" src="main.js?v=4"></script>
+</head>
+<body data-theme="light">
+
+  <div class="container">
+
+    <header>
+      <div class="header-top" style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+        <div>
+          <h1 style="margin:0;">💼 Portfolio Manager</h1>
+          <p class="subtitle" style="margin:4px 0 0;">Francesco La Gattuta</p>
+        </div>
+
+        <!-- Toggle Dark Mode -->
+    <div class="theme-toggle">
+  <label class="switch">
+    <input type="checkbox" id="themeSwitch">
+    <span class="slider"></span>
+  </label>
+  <span id="themeLabel"></span>
+</div>
+
+
+
+      </div>
+    </header>
+
+    <!-- STATISTICHE -->
+    <div class="stats-grid" style="margin-top:18px;">
+      <div class="stat-card">
+        <div class="stat-label">Totale Investito</div>
+        <div class="stat-value" id="totInvestito">0.00 €</div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-label">Valore Attuale</div>
+        <div class="stat-value" id="valoreAttuale">0.00 €</div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-label">Totale Dividendi</div>
+        <div class="stat-value" id="totDividendi">0.00 €</div>
+      </div>
+
+     <div class="stat-card">
+  <div class="stat-label">Profitto Totale</div>
+  <div class="stat-value" id="totProfitto">0.00 €</div>
+  <div class="stat-subvalue" id="totProfittoPerc" style="font-size:14px; opacity:0.75; margin-top:4px;">0%</div>
+</div>
+    </div>
+
+    <!-- CONTROLLI -->
+    <div class="controls" style="margin-top:16px;">
+      <label class="file-label">
+        📥 Importa Excel
+        <input type="file" accept=".xlsx,.xls" onchange="importExcel(event)">
+      </label>
+
+      <button class="export-btn" onclick="exportExcel()">📤 Esporta Excel</button>
+
+      <a class="dashboard-btn" href="dashboard.html">📊 Dashboard</a>  
+      <a class="dashboard-btn" href="dividendi.html" style="background:#6c5ce7;">💵 Dividendi</a>
+      <a class="dashboard-btn" href="andamento.html" style="background:#0984e3;">📈 Andamento</a>
+
+    </div>
+
+    <!-- TABELLA -->
+    <div class="table-container" style="margin-top:18px;">
+      <table>
+        <thead>
+          <tr id="headerRow"></tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+    </div>
+
+  </div>
+
+  <!-- Modal root (main.js uses ensureModal() to append #editModal when needed) -->
+  <div id="modal-root"></div>
+<script>
+  const switchEl = document.getElementById("themeSwitch");
+  const themeLabel = document.querySelector('.theme-toggle span') || document.getElementById("themeLabel");
+
+  // Legge preferenza (o fallback a light)
+  const saved = localStorage.getItem("theme") || "light";
+  document.body.dataset.theme = saved;
+  if (saved === "dark") document.body.classList.add("dark");
+  switchEl.checked = saved === "dark";
+  if(themeLabel) themeLabel.textContent = saved === "dark" ? "🌙 Dark" : "☀️ Light";
+
+  switchEl.addEventListener("change", () => {
+    const mode = switchEl.checked ? "dark" : "light";
+    document.body.dataset.theme = mode;
+    if(mode === "dark") document.body.classList.add("dark");
+    else document.body.classList.remove("dark");
+    if(themeLabel) themeLabel.textContent = mode === "dark" ? "🌙 Dark" : "☀️ Light";
+    localStorage.setItem("theme", mode);
+  });
+</script>
+
+</body>
+</html>
