@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Andamento Portafoglio</title>
+
+  <!-- tema generale -->
+  <link rel="stylesheet" href="style.css?v=5">
+  <!-- stile specifico per andamento -->
+  <link rel="stylesheet" href="andamento.css?v=2">
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <!-- applica il tema prima di renderizzare il resto -->
+  <script>
+    const savedTheme = localStorage.getItem("theme") || "light";
+    document.body.dataset.theme = savedTheme;
+    if (savedTheme === "dark") document.body.classList.add("dark");
+    else document.body.classList.remove("dark");
+  </script>
+
+  <div class="container">
+    <header>
+      <h1>📈 Andamento Portafoglio</h1>
+      <p class="subtitle">Francesco La Gattuta</p>
+    </header>
+
+    <div class="controls">
+      <button onclick="window.location.href='index.html'">🏠 Home</button>
+      <a class="dashboard-btn" href="dashboard.html" style="background:#0984e3; color:#fff; padding:10px 14px; border-radius:10px; align-self:center;">📊 Dashboard</a>
+      <button onclick="window.location.href='dividendi.html'">💰 Dividendi</button>
+    </div>
+    
+<div class="summary-boxes">
+  <div class="box" id="box-investito">
+    <div class="label">Investito</div>
+    <div class="value">0 €</div>
+  </div>
+  <div class="box" id="box-valore">
+    <div class="label">Valore Attuale</div>
+    <div class="value">0 €</div>
+  </div>
+  <div class="box" id="box-profitto">
+    <div class="label">Profitto</div>
+    <div class="value">0 €</div>
+  </div>
+  <div class="box" id="box-percentuale">
+    <div class="label">% Profitto</div>
+    <div class="value">0.00%</div>
+  </div>
+</div>
+
+    <div id="grafico-container">
+      <canvas id="grafico"></canvas>
+    </div>
+
+    <div class="mensile-wrap" aria-live="polite">
+      <h2>📊 Riepilogo Mensile</h2>
+
+      <div class="table-container">
+        <table id="tabella-mensile" aria-describedby="riepilogo-mensile">
+          <colgroup>
+            <col> <!-- Data -->
+            <col> <!-- Investito -->
+            <col> <!-- Valore -->
+            <col> <!-- Incremento -->
+            <col> <!-- Profitto -->
+            <col> <!-- % Profitto -->
+            <col> <!-- Dettagli -->
+          </colgroup>
+          <thead>
+            <tr>
+              <th>Data (ultimo mese)</th>
+              <th>Investito</th>
+              <th>Valore</th>
+              <th>Incremento</th>
+              <th>Profitto</th>
+              <th>% Profitto</th>
+              <th>Dettagli</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+<script type="module">
+  import { db } from "./firebase-config.js";
+  import { collection, getDocs, doc, updateDoc } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+
+  const ctx = document.getElementById("grafico").getContext("2d");
+  let grafico = null;
+
+  const formatFull = id => {
+    const p = String(id).split("-");
+    if (p.length >= 3) return `${p[2].padStart(2,'0')}/${p[1].padStart(2,'0')}/${p[0]}`;
+    return id;
+  };
+  const formatShort = id => {
+    const p = String(id).split("-");
+    if (p.length >= 3) return `${p[2].padStart(2,'0')}/${p[1].padStart(2,'0')}`;
+    return id;
+  };
+
+  function getChartColors() {
+    const isDark = document.body.classList.contains('dark');
+    return {
+      textColor: isDark ? '#ecf0f1' : '#2c3e50',
+      gridColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+    };
+  }
+
+  async function loadAndamento() {
+    try {
+      const snap = await getDocs(collection(db, "andamento"));
+      const raw = [];
+      snap.forEach(d => raw.push({ id: d.id, ...d.data() }));
+      if (!raw.length) {
+        document.querySelector("#tabella-mensile tbody").innerHTML = "<tr><td colspan='7' class='center'>Nessun dato</td></tr>";
+        return;
+      }
+
+      raw.sort((a,b) => new Date(a.id) - new Date(b.id));
+
+
+      // =============================
+//   AGGIORNA I BOXPANEL
+// =============================
+(function updateSummaryBoxes() {
+  const last = raw[raw.length - 1]; // ultimo giorno disponibile
+  if (!last) return;
+
+  const inv = Number(last.INVESTITO || 0);
+  const val = Number(last.GIORNALIERO || 0);
+  const profit = val - inv;
+  const perc = inv > 0 ? (profit / inv * 100).toFixed(2) : "0.00";
+
+  document.querySelector("#box-investito .value").textContent = inv.toFixed(2) + " €";
+  document.querySelector("#box-valore .value").textContent = val.toFixed(2) + " €";
+  document.querySelector("#box-profitto .value").textContent =
+    profit.toFixed(2) + " €";
+  document.querySelector("#box-percentuale .value").textContent = perc + "%";
+})();
+
+      const labels = raw.map(r => formatShort(r.id));
+      const giornaliero = raw.map(r => Number(r.GIORNALIERO || 0));
+      const investito = raw.map(r => Number(r.INVESTITO || 0));
+
+      const colors = getChartColors();
+
+      if (grafico) grafico.destroy();
+      grafico = new Chart(ctx, {
+        type:'line',
+        data:{ 
+          labels, 
+          datasets:[
+            { 
+              label:'Valore Portafoglio', 
+              data:giornaliero, 
+              borderColor:'rgba(0,180,255,1)', 
+              backgroundColor:'rgba(0,180,255,0.15)', 
+              tension:0.4, 
+              fill:true,
+              borderWidth: 3,
+              pointRadius: 0,
+              pointHoverRadius: 5,
+              pointHoverBackgroundColor: 'rgba(0,180,255,1)',
+              pointHoverBorderColor: '#fff',
+              pointHoverBorderWidth: 2
+            },
+            { 
+              label:'Investito', 
+              data:investito, 
+              borderColor:'rgba(255,200,0,1)', 
+              backgroundColor:'rgba(255,200,0,0.1)', 
+              tension:0.4, 
+              fill:true,
+              borderWidth: 3,
+              pointRadius: 0,
+              pointHoverRadius: 5,
+              pointHoverBackgroundColor: 'rgba(255,200,0,1)',
+              pointHoverBorderColor: '#fff',
+              pointHoverBorderWidth: 2
+            }
+          ]
+        },
+        options:{
+          responsive:true,
+          maintainAspectRatio: true,
+          interaction: {
+            mode: 'index',
+            intersect: false,
+          },
+          plugins: { 
+            legend: { 
+              labels: { 
+                color: colors.textColor,
+                font: {
+                  size: 14,
+                  weight: '600'
+                },
+                padding: 15,
+                usePointStyle: true,
+                pointStyle: 'circle'
+              },
+              position: 'top'
+            },
+            tooltip: {
+              backgroundColor: 'rgba(0, 0, 0, 0.8)',
+              titleColor: '#fff',
+              bodyColor: '#fff',
+              borderColor: 'rgba(0, 180, 255, 0.5)',
+              borderWidth: 1,
+              padding: 12,
+              displayColors: true,
+              callbacks: {
+                label: function(context) {
+                  let label = context.dataset.label || '';
+                  if (label) {
+                    label += ': ';
+                  }
+                  label += context.parsed.y.toFixed(2) + ' €';
+                  return label;
+                }
+              }
+            }
+          },
+          scales: { 
+            x: { 
+              ticks: { 
+                color: colors.textColor,
+                font: {
+                  size: 12,
+                  weight: '500'
+                }
+              },
+              grid: {
+                color: colors.gridColor,
+                drawBorder: false
+              }
+            }, 
+            y: { 
+              ticks: { 
+                color: colors.textColor,
+                font: {
+                  size: 12,
+                  weight: '500'
+                },
+                callback: function(value) {
+                  return value.toFixed(0) + ' €';
+                }
+              },
+              grid: {
+                color: colors.gridColor,
+                drawBorder: false
+              }
+            } 
+          }
+        }
+      });
+
+      const perMese = {};
+      raw.forEach(r => { perMese[r.id.slice(0,7)] = r; });
+      renderTabella(perMese, raw);
+    } catch (err) {
+      console.error("Errore loadAndamento:", err);
+      alert("Errore caricamento dati (vedi console).");
+    }
+  }
+
+  function renderTabella(perMese, rawRecords) {
+    const old = document.querySelector("#tabella-mensile tbody");
+    const tbody = old.cloneNode(false);
+    old.parentNode.replaceChild(tbody, old);
+
+    let lastInv = null;
+    Object.keys(perMese).sort().forEach(mese => {
+      const r = perMese[mese];
+      const inv = Number(r.INVESTITO || 0);
+      const val = Number(r.GIORNALIERO || 0);
+      const incremento = lastInv !== null ? inv - lastInv : 0;
+      lastInv = inv;
+      const profitto = val - inv;
+      const perc = inv > 0 ? ((profitto / inv) * 100).toFixed(2) : "0.00";
+
+      const tr = document.createElement("tr");
+      tr.dataset.mese = mese;
+      tr.innerHTML = `
+        <td>${formatFull(r.id)}</td>
+        <td class="right">${inv.toFixed(2)} €</td>
+        <td class="right">${val.toFixed(2)} €</td>
+        <td class="${incremento>=0?'positivo':'negativo'} right">${incremento.toFixed(2)} €</td>
+        <td class="${profitto>=0?'positivo':'negativo'} right">${profitto.toFixed(2)} €</td>
+        <td class="${profitto>=0?'positivo':'negativo'} right">${perc}%</td>
+        <td class="center"><button class="btn-toggle" data-mese="${mese}">Dettagli ▸</button></td>
+      `;
+      tbody.appendChild(tr);
+
+      const detRow = document.createElement("tr");
+      detRow.className = "details-row";
+      detRow.style.display = "none";
+      detRow.dataset.mese = mese;
+      const td = document.createElement("td");
+      td.colSpan = 7;
+      td.className = "details-inner";
+      td.innerHTML = `<div class="details-inner"><em>Carica dettagli...</em></div>`;
+      detRow.appendChild(td);
+      tbody.appendChild(detRow);
+    });
+
+    tbody.addEventListener("click", async (e) => {
+      const toggle = e.target.closest(".btn-toggle");
+      if (toggle) {
+        const mese = toggle.dataset.mese;
+        const detRow = tbody.querySelector(`tr.details-row[data-mese="${mese}"]`);
+        const container = detRow.querySelector(".details-inner");
+        if (detRow.style.display === "table-row") {
+          detRow.style.display = "none";
+          toggle.textContent = "Dettagli ▸";
+          return;
+        }
+        const records = rawRecords.filter(rr => rr.id.startsWith(mese)).sort((a,b) => new Date(a.id)-new Date(b.id));
+        container.innerHTML = `
+          <table class="detail-table">
+            <colgroup><col><col><col><col><col><col></colgroup>
+            <thead><tr><th>Data</th><th>Investito</th><th>Valore</th><th>Profitto</th><th>%</th><th>Azioni</th></tr></thead>
+            <tbody>
+              ${records.map(r => {
+                const inv = Number(r.INVESTITO || 0);
+                const val = Number(r.GIORNALIERO || 0);
+                const pf = val - inv;
+                const pct = inv>0?((pf/inv)*100).toFixed(2):"0.00";
+                return `<tr data-docid="${r.id}">
+                  <td>${formatFull(r.id)}</td>
+                  <td class="right">${inv.toFixed(2)} €</td>
+                  <td class="right">${val.toFixed(2)} €</td>
+                  <td class="right ${pf>=0?'positivo':'negativo'}">${pf.toFixed(2)} €</td>
+                  <td class="right ${pf>=0?'positivo':'negativo'}">${pct}%</td>
+                  <td class="center"><button class="btn-edit" data-docid="${r.id}">✏️ Modifica</button></td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        `;
+        detRow.style.display = "table-row";
+        toggle.textContent = "Chiudi ▾";
+        return;
+      }
+
+      const editBtn = e.target.closest(".btn-edit");
+      if (editBtn) {
+        const tr = editBtn.closest("tr");
+        const tds = tr.querySelectorAll("td");
+        const curInv = parseFloat(tds[1].textContent.replace(' €','').trim());
+        const curVal = parseFloat(tds[2].textContent.replace(' €','').trim());
+        tds[1].innerHTML = `<input class="input-invest" type="number" step="0.01" value="${curInv}" style="width:110px">`;
+        tds[2].innerHTML = `<input class="input-val" type="number" step="0.01" value="${curVal}" style="width:110px">`;
+        tds[3].textContent = '-';
+        tds[4].textContent = '-';
+        tds[5].innerHTML = `<button class="btn-save" data-docid="${editBtn.dataset.docid}">💾 Salva</button> <button class="btn-cancel" data-docid="${editBtn.dataset.docid}">✖ Annulla</button>`;
+        tr.classList.add("editing");
+        return;
+      }
+
+      const cancel = e.target.closest(".btn-cancel");
+      if (cancel) {
+        await loadAndamento();
+        return;
+      }
+
+      const save = e.target.closest(".btn-save");
+      if (save) {
+        const docid = save.dataset.docid;
+        const tr = save.closest("tr");
+        const newInv = Number(tr.querySelector(".input-invest").value || 0);
+        const newVal = Number(tr.querySelector(".input-val").value || 0);
+        save.disabled = true;
+        const cancelBtn = tr.querySelector(".btn-cancel");
+        if (cancelBtn) cancelBtn.disabled = true;
+        try {
+          const docRef = doc(db, "andamento", docid);
+          await updateDoc(docRef, { INVESTITO: newInv, GIORNALIERO: newVal });
+          await loadAndamento();
+        } catch (err) {
+          console.error("Errore updateDoc:", err);
+          alert("Errore durante il salvataggio. Controlla console.");
+        } finally {
+          save.disabled = false;
+          if (cancelBtn) cancelBtn.disabled = false;
+        }
+        return;
+      }
+    });
+  }
+
+  loadAndamento();
+</script>
+</body>
+</html>
